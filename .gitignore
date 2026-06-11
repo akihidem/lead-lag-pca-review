@@ -1,3 +1,9 @@
 .venv/
 __pycache__/
 *.pyc
+
+# paper-trade runtime artifacts (the running track record stays local)
+paper/live_raw/
+paper/ledger.csv
+paper/state.json
+paper/logs/
