@@ -91,19 +91,22 @@ def jp_signal(win_us, win_jp, u_today, w_reg):
     return V_jp @ f                        # low-rank map to JP expected move
 
 # ---------- backtest ----------
-def weights_from_pred(pred, q=0.30):
-    n = len(pred); k = max(1, int(round(n*q)))
-    order = np.argsort(pred)
+def weights_from_pred(pred, q=0.30, allowed=None):
+    n = len(pred)
+    allowed = np.arange(n) if allowed is None else np.asarray(allowed)
+    sub = pred[allowed]; k = max(1, int(round(len(allowed)*q)))
+    order = np.argsort(sub)
     w = np.zeros(n)
-    w[order[-k:]] = 0.5/k       # long top
-    w[order[:k]] = -0.5/k       # short bottom (dollar-neutral, gross=1)
+    w[allowed[order[-k:]]] = 0.5/k   # long top (within tradable set)
+    w[allowed[order[:k]]] = -0.5/k   # short bottom (dollar-neutral, gross=1)
     return w
 
-def run(data, model="reg", w_reg=0.9, lookback=60, ret="cc", rebalance=1):
+def run(data, model="reg", w_reg=0.9, lookback=60, ret="cc", rebalance=1, trade_mask=None):
     idx = data["idx"]; us = data["us_lead"].values
     jp_ret = data["jp_"+ret].values
     jp_cc = data["jp_cc"].values
     T = len(idx); nJP = len(JP)
+    allowed = None if trade_mask is None else np.where(np.asarray(trade_mask))[0]
     W = np.zeros((T, nJP)); pnl = np.zeros(T); turn = np.zeros(T)
     w_prev = np.zeros(nJP); held = None
     for t in range(lookback, T):
@@ -117,7 +120,7 @@ def run(data, model="reg", w_reg=0.9, lookback=60, ret="cc", rebalance=1):
             wr = 0.0 if model == "plain" else w_reg
             pred = jp_signal(su, sj, u_today, wr)
         if held is None or (t - lookback) % rebalance == 0:
-            w_t = weights_from_pred(pred); held = w_t
+            w_t = weights_from_pred(pred, allowed=allowed); held = w_t
         else:
             w_t = held
         turn[t] = np.abs(w_t - w_prev).sum()
