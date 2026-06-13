@@ -17,18 +17,23 @@ intraday cost = `slip × 2` (full daily round trip). Prior weight `w_reg = 0.90`
 
 ## Forward result so far (2026 OOS)
 
-Over ~4.5 months of data the model never saw, the edge is **negative even before
-costs** — it has not merely decayed but inverted:
+Over ~4.5 months of unseen data (2026-01-28..06-12, 91 days; after repairing a
+yfinance glitch in `1629.T` 2026-03-30/31 that had corrupted the signal window),
+the tradable intraday leg is **negative even before costs**:
 
 | metric | value |
 |---|---|
-| hit rate (gross>0) | 44% |
-| mean daily gross | −5.2 bp |
-| **gross** | annualized **−13.2%**, Sharpe **−1.32** |
-| net @2bp | annualized −23.3%, Sharpe −2.33 |
+| hit rate (gross>0) | 43% |
+| mean daily gross | −4.9 bp |
+| **gross (tradable intraday)** | annualized **−12.3%**, Sharpe **−1.25** |
+| net @2bp | annualized −22.4%, Sharpe −2.27 |
 
-(Small sample; the point is there is **no positive edge live** — consistent with,
-and stronger than, the backtest's "not tradable" conclusion.)
+**Why** (decompose the same positions, see `diagnose.py` / `../out/forward.png`):
+the overnight **GAP is strongly positive** (+18.1% cum, Sharpe **+6.55**) — the
+US→JP lead-lag is real and shows up at the open — but the **tradable intraday leg
+fades** (−4.5%, Sharpe −1.25): the open overreacts and mean-reverts, so entering at
+the open is adversely selected. The real alpha lives entirely in the gap you can't
+capture. Confirms and sharpens the backtest's "not tradable" conclusion.
 
 ## Run it
 

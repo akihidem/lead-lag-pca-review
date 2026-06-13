@@ -52,10 +52,19 @@ def load(t):
     df = pd.read_csv(os.path.join(LIVE, t.replace(".","_")+".csv"), index_col=0, parse_dates=True)
     return df[~df.index.duplicated()].sort_index()
 
+def despike(s, win=21, tol=2.0):
+    """Repair vendor data errors: bars >tol x off the local rolling median (e.g. the
+    1629.T 2026-03-30/31 ~0.57-vs-288 yfinance glitch) are dropped and carried forward.
+    A single such bar otherwise blows up the 60d correlation window and corrupts the signal."""
+    med = s.rolling(win, center=True, min_periods=5).median()
+    ratio = s / med
+    bad = (ratio > tol) | (ratio < 1.0/tol)
+    return s.where(~bad).ffill().bfill()
+
 def build_live():
-    us_close = pd.DataFrame({t: load(t)["Close"] for t in US})
-    jp_close = pd.DataFrame({t: load(t)["Close"] for t in JP})
-    jp_open  = pd.DataFrame({t: load(t)["Open"]  for t in JP})
+    us_close = pd.DataFrame({t: despike(load(t)["Close"]) for t in US})
+    jp_close = pd.DataFrame({t: despike(load(t)["Close"]) for t in JP})
+    jp_open  = pd.DataFrame({t: despike(load(t)["Open"])  for t in JP})
     us_cc = us_close.pct_change()
     jp_cc = jp_close.pct_change()
     jp_oc = (jp_close / jp_open) - 1.0
@@ -90,6 +99,7 @@ def main():
     D = build_live()
     idx = D["jp_dates"]
     us_lead, jp_cc, jp_oc = D["us_lead"], D["jp_cc"], D["jp_oc"]
+    TODAY = pd.Timestamp.today().normalize()  # only book days strictly before today (avoid in-progress/provisional closes)
 
     done = set()
     rows = []
@@ -103,10 +113,10 @@ def main():
     for i in range(LOOKBACK, len(idx)):
         d = idx[i]
         ds = d.strftime("%Y-%m-%d")
-        if d < pd.Timestamp(PAPER_START) or ds in done:
-            continue
+        if d < pd.Timestamp(PAPER_START) or d >= TODAY or ds in done:
+            continue                         # skip future AND today (close not final until 15:00 JST)
         oc = jp_oc.iloc[i].values            # realized intraday (open->close) for the basket
-        if np.isnan(oc).any():               # today not closed yet -> skip booking
+        if np.isnan(oc).any():               # not closed / missing -> skip booking
             continue
         pred = signal_for(i, idx, us_lead, jp_cc)
         if pred is None:
